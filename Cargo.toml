@@ -1,0 +1,11 @@
+[package]
+name = "unused"
+version = "0.0.0"
+authors = ["patrick-gu"]
+edition = "2018"
+description = "Reserved for a crate in progress"
+readme = "README.md"
+homepage = "https://github.com/patrick-gu/unused_rs"
+repository = "https://github.com/patrick-gu/unused_rs"
+license = "MIT OR Apache-2.0"
+
