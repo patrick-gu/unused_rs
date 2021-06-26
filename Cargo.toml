@@ -1,11 +1,21 @@
 [package]
 name = "unused"
-version = "0.0.0"
+version = "0.1.0"
 authors = ["patrick-gu"]
 edition = "2018"
-description = "Reserved for a crate in progress"
+description = "Allows for unused generic parameters that do not act like they are owned."
 readme = "README.md"
 homepage = "https://github.com/patrick-gu/unused_rs"
 repository = "https://github.com/patrick-gu/unused_rs"
 license = "MIT OR Apache-2.0"
+
+[features]
+default = ["std"]
+std = []
+
+[[example]]
+name = "multiple_unused"
+
+[[example]]
+name = "producer"
 
