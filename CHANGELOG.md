@@ -5,15 +5,11 @@
 ### Added
 
  - The `Unused` type, its `new` function, and implementations of `Clone`,
-   `Copy`, `Debug`, `Default`, `Eq`, `Hash`, `Ord`, `PartialEq`, `PartialOrd`,
-   `Send`, and `Sync`.
+   `Copy`, `Debug`, `Default`, `Eq`, `Hash`, `Ord`, `PartialEq`, `PartialOrd`.
  - A test for the `Debug` implementation of `Unused`.
  - Documentation and information about the crate.
  - `producer` and `multiple_unused` examples.
  - MIT and Apache 2.0 licenses.
- - The `std` feature, which provides implementations for `RefUnwindSafe` and
-   `UnwindSafe` in environments where the standard library is supported.
- - The `default` feature, which enables the `std` feature.
 
 ### Changed
 

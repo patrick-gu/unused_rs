@@ -18,8 +18,7 @@
 //!
 //! ## `no_std` Support
 //!
-//! [`unused`](./index.html) optionally supports `no_std`. Disable the default
-//! crate features to enable this.
+//! [`unused`](./index.html) supports `no_std`.
 //!
 //! ## Example
 //!
@@ -94,9 +93,7 @@
 //! }
 //! ```
 //!
-//! Now, let's create a struct `RcString` that wraps an
-#![cfg_attr(feature = "std", doc = "<code>[Rc](std::rc::Rc)\\<[String]></code>.")]
-#![cfg_attr(not(feature = "std"), doc = "`Rc<String>.`")]
+//! Now, let's create a struct `RcString` that wraps an `Rc<String>`.
 //! `FromStrProducer<RcString>` implements `Producer`.
 //!
 //! ```
@@ -204,22 +201,18 @@
 //! [`Unused`] can be used instead of [`PhantomData`] when a type has unused
 //! generic parameters that are not conceptually owned by the type.
 
-#![cfg_attr(not(feature = "std"), no_std)]
+#![no_std]
 
 use core::cmp::Ordering;
 use core::fmt;
 use core::hash::{Hash, Hasher};
 use core::marker::PhantomData;
-#[cfg(feature = "std")]
-use std::panic::RefUnwindSafe;
-#[cfg(feature = "std")]
-use std::panic::UnwindSafe;
 
 /// A struct that allows types to have unused generic parameters that do not act
 /// like they are owned.
 ///
 /// See the [crate documentation](./index.html) for more.
-pub struct Unused<T: ?Sized>(PhantomData<*const T>);
+pub struct Unused<T: ?Sized>(PhantomData<fn() -> T>);
 
 impl<T: ?Sized> Unused<T> {
     /// Creates a new [`Unused<T>`].
@@ -227,22 +220,6 @@ impl<T: ?Sized> Unused<T> {
         Self(PhantomData)
     }
 }
-
-/// Safety: [`Unused<T>`] can be sent between threads regardless of whether `T`
-/// can. It does not store or access any state.
-unsafe impl<T: ?Sized> Send for Unused<T> {}
-
-/// Safety: [`Unused<T>`] can be shared between threads regardless of whether
-/// `T` can. It does not store or access any state.
-unsafe impl<T: ?Sized> Sync for Unused<T> {}
-
-#[cfg(feature = "std")]
-/// [`Unused`] has no invariants that can be broken.
-impl<T: ?Sized> UnwindSafe for Unused<T> {}
-
-#[cfg(feature = "std")]
-/// [`Unused`] has no invariants that can be broken.
-impl<T: ?Sized> RefUnwindSafe for Unused<T> {}
 
 impl<T: ?Sized> Clone for Unused<T> {
     fn clone(&self) -> Self {
