@@ -152,7 +152,7 @@ thread::spawn(move || {
 .unwrap();
 ```
 
-We get a compilation error, because `RcString` is not [`Send`].
+We get a compilation error, because `RcString` is not `Send`.
 
 ```text
 error[E0277]: `Rc<String>` cannot be sent between threads safely
