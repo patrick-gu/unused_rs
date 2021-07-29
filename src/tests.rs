@@ -12,7 +12,7 @@ use crate::Unused;
 fn variance() {
     fn _simple_covariant<'a>(
         unused: Unused!(&'static str: covariant),
-    ) -> Unused!(&'a str: covariant) {
+    ) -> Unused!(&'a str: covariant,) {
         unused
     }
 
