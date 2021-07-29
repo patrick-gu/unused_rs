@@ -41,8 +41,9 @@
 //! }
 //! ```
 //!
-//! The issue with this is that `LazyFromStr<T>` is only [`Send`] and [`Sync`]
-//! if `T` also is.
+//! The issue with using [`PhantomData`](core::marker::PhantomData) is that
+//! `LazyFromStr<T>` is only [`Send`] and [`Sync`] if `T` also is, even though
+//! our `LazyFromStr<T>` does not own a `T`.
 //!
 //! This is where `unused` comes in.
 //!

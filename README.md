@@ -7,11 +7,11 @@ not act like they are owned.
 
 ## Example
 
-Imagine we have a struct `LazyFromStr`, which contains a <code>&'static [str]</code> and can
-lazily create a `T` using its [`FromStr`](core::str::FromStr) impl.
+Imagine we have a struct `LazyFromStr`, which contains a `&'static str` and can
+lazily create a `T` using its `FromStr` impl.
 
 To have `T` be a generic parameter of `LazyFromStr`, we can use a
-[`PhantomData`](core::marker::PhantomData). Otherwise, we get a
+`PhantomData`. Otherwise, we get a
 compilation error that the parameter `T` is never used.
 
 ```rust
@@ -33,8 +33,9 @@ impl<T: FromStr> LazyFromStr<T> {
 }
 ```
 
-The issue with this is that `LazyFromStr<T>` is only [`Send`] and [`Sync`]
-if `T` also is.
+The issue with using `PhantomData` is that
+`LazyFromStr<T>` is only `Send` and `Sync` if `T` also is, even though
+our `LazyFromStr<T>` does not own a `T`.
 
 This is where `unused` comes in.
 
