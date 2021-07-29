@@ -9,6 +9,7 @@
 -   Usage examples and documentation.
 -   Tests to ensure auto traits are implemented and variances are correct.
 -   [MIT](./LICENSE-MIT) and [Apache-2.0](./LICENSE-APACHE) licenses.
+-   `no-std` category for [crates.io](https://crates.io).
 
 ### Changed
 
