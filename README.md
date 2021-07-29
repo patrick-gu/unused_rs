@@ -2,217 +2,130 @@
 
 ## About Unused
 
-The `unused` crate provides `Unused`, a struct that
-allows types to have unused generic parameters that do not act like they
-are owned.
-
-Unlike `PhantomData<T>`, `Unused<T>` does not tell the compiler that
-the type owns a `T`.
-
-Because `Unused<T>` does not "own" a `T`, it is `Send`, `Sync`, and
-`Unpin` even if `T` is not. It is just a container for the `T` type, and
-has no data or state of its own. All instances of it are the same.
-
-# Feedback
-If you experience any issues or have any feedback, please feel free to open
-an issue on the
-[GitHub repository](https://github.com/patrick-gu/unused_rs/issues/new).
-
-## `no_std` Support
-
-`unused` optionally supports `no_std`. Disable the default
-crate features to enable this.
+The `unused` crate allows types to have unused generic parameters that do
+not act like they are owned.
 
 ## Example
 
-Consider a trait `Producer`.
+Imagine we have a struct `LazyFromStr`, which contains a <code>&'static [str]</code> and can
+lazily create a `T` using its [`FromStr`](core::str::FromStr) impl.
 
-We implement `Producer` for a struct `ProducesFive`, and for `usize`.
-
-```rust
-trait Producer {
-    type Output;
-
-    fn produce(&self, data: &str) -> Self::Output;
-}
-
-struct ProducesFive;
-
-impl Producer for ProducesFive {
-    type Output = i32;
-
-    fn produce(&self, _data: &str) -> Self::Output {
-        5
-    }
-}
-
-impl Producer for usize {
-    type Output = usize;
-
-    fn produce(&self, _data: &str) -> Self::Output {
-        *self
-    }
-}
-```
-
-Now, let's say that we want to have a `Producer` for any type that
-implements `FromStr` by parsing the provided `data`.
-We create a `FromStrProducer` struct, to not conflict with the existing
-implementation for `usize`.
-
-```rust
-use std::str::FromStr;
-
-struct FromStrProducer<T: FromStr>;
-
-impl<T: FromStr> Producer for FromStrProducer<T>  {
-    type Output = T;
-
-    fn produce(&self, data: &str) -> Self::Output {
-        data.parse().ok().unwrap()
-    }
-}
-```
-
-However, this fails to compile, because the parameter `T` is never used.
-
-```text
-error[E0392]: parameter `T` is never used
-  --> examples/producer.rs
-   |
-   | struct FromStrProducer<T: FromStr>;
-   |                        ^ unused parameter
-   |
-   = help: consider removing `T`, referring to it in a field, or using a marker such as `PhantomData`
-```
-
-If we add a `PhantomData<T>`, our `Producer` works.
+To have `T` be a generic parameter of `LazyFromStr`, we can use a
+[`PhantomData`](core::marker::PhantomData). Otherwise, we get a
+compilation error that the parameter `T` is never used.
 
 ```rust
 use std::marker::PhantomData;
+use std::str::FromStr;
 
-struct FromStrProducer<T: FromStr> {
-    _phantom: PhantomData<T>,
+struct LazyFromStr<T> {
+    str: &'static str,
+    phantom: PhantomData<T>,
+}
+
+impl<T: FromStr> LazyFromStr<T> {
+    fn create(&self) -> T {
+        match T::from_str(self.str) {
+            Ok(t) => t,
+            Err(_) => panic!(),
+        }
+    }
 }
 ```
 
-Now, let's create a struct `RcString` that wraps an
-`Rc<String>`.
-`FromStrProducer<RcString>` implements `Producer`.
+The issue with this is that `LazyFromStr<T>` is only [`Send`] and [`Sync`]
+if `T` also is.
+
+This is where `unused` comes in.
 
 ```rust
+// We need to import `Unused`.
+use unused::Unused;
+
+struct LazyFromStr<T> {
+    str: &'static str,
+    // Use the `Unused` macro instead of `PhantomData`.
+    unused: Unused!(T),
+}
+
 use std::convert::Infallible;
 use std::rc::Rc;
 
-#[derive(Eq, PartialEq, Debug)]
+// `RcString` is not `Send` or `Sync`.
 struct RcString(Rc<String>);
 
 impl FromStr for RcString {
     type Err = Infallible;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(Rc::new(s.to_owned())))
+    fn from_str(str: &str) -> Result<Self, Self::Err> {
+        Ok(Self(Rc::new(str.to_owned())))
     }
 }
 
-let producer = FromStrProducer {
-    _phantom: PhantomData
+let lazy: LazyFromStr<RcString> = LazyFromStr {
+    str: "a",
+    // Use `Unused` as a value.
+    unused: Unused,
 };
 
-let rc_string: RcString = producer.produce("hello");
-assert_eq!(rc_string, RcString(Rc::new("hello".to_owned())));
-```
-
-Now, let's try creating a producer and sending it to another thread.
-
-```rust
 use std::thread;
 
-let producer = ProducesFive;
-
-thread::spawn(move || {
-    assert_eq!(producer.produce("a"), 5);
+// `lazy` is `Send` (even though `RcString` is not), so we can send it between threads.
+thread::spawn(move ||{
+    let _ = lazy.create();
 })
 .join()
 .unwrap();
 ```
 
-Sending `ProducesFive` works, but what happens if we try to
-send `FromStrProducer<RcString>`?
+## Usage
 
-```rust
-let producer = FromStrProducer::<RcString> {
-    _phantom: PhantomData
-};
+First, add `unused` to your `dependencies` in `Cargo.toml`:
 
-thread::spawn(move || {
-    assert_eq!(producer.produce("a"), RcString(Rc::new("a".to_owned())));
-})
-.join()
-.unwrap();
+```toml
+unused = "0.1"
 ```
 
-We get a compilation error, because `RcString` is not `Send`.
-
-```text
-error[E0277]: `Rc<String>` cannot be sent between threads safely
-
-...
-
-note: required because it appears within the type `RcString`
-   --> examples/producer.rs
-    |
-    | struct RcString(Rc<String>);
-    |        ^^^^^^^^
-    = note: required because it appears within the type `PhantomData<RcString>`
-note: required because it appears within the type `FromStrProducer<RcString>`
-
-...
-```
-
-`RcString` is required to be `Send` despite the fact that we are never
-actually sending any `RcString`s between threads. The issue comes from the
-fact that the `PhantomData` makes `FromStrProducer` act like it owns a
-`RcString` when it doesn't, making `FromStrProducer<RcString>` not
-`Send`.
-
-This is where `unused` comes in.
-`FromStrProducer<RcString>` is `Send` if we replace `PhantomData` with
-`Unused`.
+Create a simple struct with an unused generic parameter:
 
 ```rust
 use unused::Unused;
 
-struct FromStrProducer<T: FromStr> {
-    _unused: Unused<T>,
+struct Foo<T> {
+    some_string: String,
+    unused: Unused!(T),
 }
-```
 
-Now, sending `FromStrProducer<RcString>` between threads works.
-
-```rust
-let producer = FromStrProducer::<RcString> {
-    _unused: Unused::new(),
+let foo: Foo<usize> = Foo {
+    some_string: "hello".to_owned(),
+    unused: Unused,
 };
-
-thread::spawn(move || {
-    assert_eq!(producer.produce("a"), RcString(Rc::new("a".to_owned())));
-})
-.join()
-.unwrap();
 ```
 
-`Unused` can be used instead of `PhantomData` when a type has unused
-generic parameters that are not conceptually owned by the type.
+See the [docs](https://docs.rs/unused) for the full documentation.
+
+## Feedback
+
+If you experience any issues or have any feedback, please feel free to open
+an issue on the
+[GitHub repository](https://github.com/patrick-gu/unused_rs/issues/new).
+
+## Related/Similar Crates
+
+-   [type_variance](https://crates.io/crates/type-variance) - Marker traits for
+    subtype variance
+-   [ghost](https://crates.io/crates/ghost) - Define your own PhantomData
+-   [rich-phantoms](https://crates.io/crates/rich-phantoms) - Phantom types with
+    control over variance and sync/sync inheritance
 
 ## License
 
 Licensed under either of
 
- * Apache License, Version 2.0
-   ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
- * MIT license
-   ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+-   Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) or
+    http://www.apache.org/licenses/LICENSE-2.0)
+-   MIT license
+    ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
 
@@ -221,4 +134,3 @@ at your option.
 Unless you explicitly state otherwise, any contribution intentionally submitted
 for inclusion in the work by you, as defined in the Apache-2.0 license, shall be
 dual licensed as above, without any additional terms or conditions.
-

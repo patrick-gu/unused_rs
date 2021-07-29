@@ -1,338 +1,228 @@
 //! # About Unused
 //!
-//! The [`unused`](./index.html) crate provides [`Unused`], a struct that
-//! allows types to have unused generic parameters that do not act like they
-//! are owned.
-//!
-//! Unlike [`PhantomData<T>`], [`Unused<T>`] does not tell the compiler that
-//! the type owns a `T`.
-//!
-//! Because [`Unused<T>`] does not "own" a `T`, it is [`Send`], [`Sync`], and
-//! [`Unpin`] even if `T` is not. It is just a container for the `T` type, and
-//! has data or state of its own. All instances of it are the same.
+//! The `unused` crate allows types to have unused generic parameters that do
+//! not act like they are owned.
 //!
 //! ## Feedback
+//!
 //! If you experience any issues or have any feedback, please feel free to open
 //! an issue on the
 //! [GitHub repository](https://github.com/patrick-gu/unused_rs/issues/new).
 //!
 //! ## `no_std` Support
 //!
-//! [`unused`](./index.html) supports `no_std`.
+//! `unused` supports `no_std`.
 //!
 //! ## Example
 //!
-//! Consider a trait `Producer`.
+//! Imagine we have a struct `LazyFromStr`, which contains a <code>&'static [str]</code> and can
+//! lazily create a `T` using its [`FromStr`](core::str::FromStr) impl.
 //!
-//! We implement `Producer` for a struct `ProducesFive`, and for `usize`.
-//!
-//! ```
-//! trait Producer {
-//!     type Output;
-//!
-//!     fn produce(&self, data: &str) -> Self::Output;
-//! }
-//!
-//! struct ProducesFive;
-//!
-//! impl Producer for ProducesFive {
-//!     type Output = i32;
-//!
-//!     fn produce(&self, _data: &str) -> Self::Output {
-//!         5
-//!     }
-//! }
-//!
-//! impl Producer for usize {
-//!     type Output = usize;
-//!
-//!     fn produce(&self, _data: &str) -> Self::Output {
-//!         *self
-//!     }
-//! }
-//! ```
-//!
-//! Now, let's say that we want to have a `Producer` for any type that
-//! implements [`FromStr`](core::str::FromStr) by parsing the provided `data`.
-//! We create a `FromStrProducer` struct, to not conflict with the existing
-//! implementation for [`usize`].
-//!
-//! ```
-//! use std::str::FromStr;
-//!
-//! struct FromStrProducer<T: FromStr>;
-//!
-//! impl<T: FromStr> Producer for FromStrProducer<T>  {
-//!     type Output = T;
-//!
-//!     fn produce(&self, data: &str) -> Self::Output {
-//!         data.parse().ok().unwrap()
-//!     }
-//! }
-//! ```
-//!
-//! However, this fails to compile, because the parameter `T` is never used.
-//!
-//! ```text
-//! error[E0392]: parameter `T` is never used
-//!   --> examples/producer.rs
-//!    |
-//!    | struct FromStrProducer<T: FromStr>;
-//!    |                        ^ unused parameter
-//!    |
-//!    = help: consider removing `T`, referring to it in a field, or using a marker such as `PhantomData`
-//! ```
-//!
-//! If we add a [`PhantomData<T>`], our `Producer` works.
+//! To have `T` be a generic parameter of `LazyFromStr`, we can use a
+//! [`PhantomData`](core::marker::PhantomData). Otherwise, we get a
+//! compilation error that the parameter `T` is never used.
 //!
 //! ```
 //! use std::marker::PhantomData;
+//! use std::str::FromStr;
 //!
-//! struct FromStrProducer<T: FromStr> {
-//!     _phantom: PhantomData<T>,
+//! struct LazyFromStr<T> {
+//!     str: &'static str,
+//!     phantom: PhantomData<T>,
+//! }
+//!
+//! impl<T: FromStr> LazyFromStr<T> {
+//!     fn create(&self) -> T {
+//!         match T::from_str(self.str) {
+//!             Ok(t) => t,
+//!             Err(_) => panic!(),
+//!         }
+//!     }
 //! }
 //! ```
 //!
-//! Now, let's create a struct `RcString` that wraps an `Rc<String>`.
-//! `FromStrProducer<RcString>` implements `Producer`.
+//! The issue with this is that `LazyFromStr<T>` is only [`Send`] and [`Sync`]
+//! if `T` also is.
+//!
+//! This is where `unused` comes in.
 //!
 //! ```
+//! // We need to import `Unused`.
+//! use unused::Unused;
+//!
+//! struct LazyFromStr<T> {
+//!     str: &'static str,
+//!     // Use the `Unused` macro instead of `PhantomData`.
+//!     unused: Unused!(T),
+//! }
+//! # use std::str::FromStr;
+//! # impl<T: FromStr> LazyFromStr<T> {
+//! #     fn create(&self) -> T {
+//! #         match T::from_str(self.str) {
+//! #             Ok(t) => t,
+//! #             Err(_) => panic!(),
+//! #         }
+//! #     }
+//! # }
+//!
 //! use std::convert::Infallible;
 //! use std::rc::Rc;
 //!
-//! #[derive(Eq, PartialEq, Debug)]
+//! // `RcString` is not `Send` or `Sync`.
 //! struct RcString(Rc<String>);
 //!
 //! impl FromStr for RcString {
 //!     type Err = Infallible;
 //!
-//!     fn from_str(s: &str) -> Result<Self, Self::Err> {
-//!         Ok(Self(Rc::new(s.to_owned())))
+//!     fn from_str(str: &str) -> Result<Self, Self::Err> {
+//!         Ok(Self(Rc::new(str.to_owned())))
 //!     }
 //! }
 //!
-//! let producer = FromStrProducer {
-//!     _phantom: PhantomData
+//! let lazy: LazyFromStr<RcString> = LazyFromStr {
+//!     str: "a",
+//!     // Use `Unused` as a value.
+//!     unused: Unused,
 //! };
 //!
-//! let rc_string: RcString = producer.produce("hello");
-//! assert_eq!(rc_string, RcString(Rc::new("hello".to_owned())));
-//! ```
-//!
-//! Now, let's try creating a producer and sending it to another thread.
-//!
-//! ```
 //! use std::thread;
 //!
-//! let producer = ProducesFive;
-//!
-//! thread::spawn(move || {
-//!     assert_eq!(producer.produce("a"), 5);
+//! // `lazy` is `Send` (even though `RcString` is not), so we can send it between threads.
+//! thread::spawn(move ||{
+//!     let _ = lazy.create();
 //! })
 //! .join()
 //! .unwrap();
 //! ```
 //!
-//! Sending `ProducesFive` works, but what happens if we try to
-//! send `FromStrProducer<RcString>`?
+//! [By default, `Unused` makes generics invariant](Unused!#variances).
 //!
-//! ```compile_fail
-//! let producer = FromStrProducer::<RcString> {
-//!     _phantom: PhantomData
-//! };
-//!
-//! thread::spawn(move || {
-//!     assert_eq!(producer.produce("a"), RcString(Rc::new("a".to_owned())));
-//! })
-//! .join()
-//! .unwrap();
-//! ```
-//!
-//! We get a compilation error, because `RcString` is not [`Send`].
-//!
-//! ```text
-//! error[E0277]: `Rc<String>` cannot be sent between threads safely
-//!
-//! ...
-//!
-//! note: required because it appears within the type `RcString`
-//!    --> examples/producer.rs
-//!     |
-//!     | struct RcString(Rc<String>);
-//!     |        ^^^^^^^^
-//!     = note: required because it appears within the type `PhantomData<RcString>`
-//! note: required because it appears within the type `FromStrProducer<RcString>`
-//!
-//! ...
-//! ```
-//!
-//! `RcString` is required to be [`Send`] despite the fact that we are never
-//! actually sending any `RcString`s between threads. The issue comes from the
-//! fact that the [`PhantomData`] makes `FromStrProducer` act like it owns a
-//! `RcString` when it doesn't, making `FromStrProducer<RcString>` not
-//! [`Send`].
-//!
-//! This is where [`unused`](./index.html) comes in.
-//! `FromStrProducer<RcString>` is [`Send`] if we replace [`PhantomData`] with
-//! [`Unused`].
-//!
-//! ```
-//! use unused::Unused;
-//!
-//! struct FromStrProducer<T: FromStr> {
-//!     _unused: Unused<T>,
-//! }
-//! ```
-//!
-//! Now, sending `FromStrProducer<RcString>` between threads works.
-//!
-//! ```
-//! let producer = FromStrProducer::<RcString> {
-//!     _unused: Unused::new(),
-//! };
-//!
-//! thread::spawn(move || {
-//!     assert_eq!(producer.produce("a"), RcString(Rc::new("a".to_owned())));
-//! })
-//! .join()
-//! .unwrap();
-//! ```
-//!
-//! [`Unused`] can be used instead of [`PhantomData`] when a type has unused
-//! generic parameters that are not conceptually owned by the type.
+//! See the [`Unused!`] macro for more examples.
 
 #![no_std]
 
-use core::cmp::Ordering;
-use core::fmt;
-use core::hash::{Hash, Hasher};
-use core::marker::PhantomData;
-
-/// A struct that allows types to have unused generic parameters that do not act
-/// like they are owned.
-///
-/// See the [crate documentation](./index.html) for more.
-pub struct Unused<T: ?Sized>(PhantomData<fn() -> T>);
-
-impl<T: ?Sized> Unused<T> {
-    /// Creates a new [`Unused<T>`].
-    pub fn new() -> Self {
-        Self(PhantomData)
-    }
-}
-
-impl<T: ?Sized> Clone for Unused<T> {
-    fn clone(&self) -> Self {
-        // All instances of `Unused` are the same, so `Unused::new()` will produce the
-        // same thing.
-        Self::new()
-    }
-
-    // This does nothing, since all instances of `Unused` are the same.
-    fn clone_from(&mut self, _source: &Self) {}
-}
-
-// `Unused` has no state or special semantics. All instances of it are the same.
-impl<T: ?Sized> Copy for Unused<T> {}
-
-impl<T: ?Sized> Default for Unused<T> {
-    fn default() -> Self {
-        // This default is the same as any instance.
-        Self::new()
-    }
-}
-
-impl<T: ?Sized> fmt::Debug for Unused<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_tuple("Unused").field(&self.0).finish()
-    }
-}
-
-// This `Hash` implementation does nothing, because all instances of `Unused`
-// are the same.
-impl<T: ?Sized> Hash for Unused<T> {
-    fn hash<H>(&self, _state: &mut H)
-    where
-        H: Hasher,
-    {
-    }
-
-    fn hash_slice<H>(_data: &[Self], _state: &mut H)
-    where
-        H: Hasher,
-    {
-    }
-}
-
-// All `Unused`s are the same as one another, and this implementation reflects
-// that.
-impl<T: ?Sized> PartialEq for Unused<T> {
-    fn eq(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-// The equality is reflexive, symmetric, and transitive.
-impl<T: ?Sized> Eq for Unused<T> {}
-
-// All `Unused`s are equal to one another, and this implementation reflects
-// that.
-impl<T: ?Sized> PartialOrd for Unused<T> {
-    fn partial_cmp(&self, _other: &Self) -> Option<Ordering> {
-        Some(Ordering::Equal)
-    }
-
-    fn lt(&self, _other: &Self) -> bool {
-        false
-    }
-
-    fn le(&self, _other: &Self) -> bool {
-        true
-    }
-
-    fn gt(&self, _other: &Self) -> bool {
-        false
-    }
-
-    fn ge(&self, _other: &Self) -> bool {
-        true
-    }
-}
-
-// All `Unused`s are equal to one another, and this implementation reflects
-// that. The ordering is total, asymmetric, and transitive
-impl<T: ?Sized> Ord for Unused<T> {
-    fn cmp(&self, _other: &Self) -> Ordering {
-        Ordering::Equal
-    }
-
-    // It does not matter which side is returned, because both are the same.
-    fn max(self, _other: Self) -> Self {
-        self
-    }
-
-    // It does not matter which side is returned, because both are the same.
-    fn min(self, _other: Self) -> Self {
-        self
-    }
-
-    // It does not matter what is returned, because all are the same.
-    fn clamp(self, _min: Self, _max: Self) -> Self {
-        self
-    }
-}
-
+mod contravariant;
+mod covariant;
+mod end;
+mod inner;
+mod invariant;
 #[cfg(test)]
-mod tests {
-    extern crate std;
+mod tests;
+mod unused;
 
-    use super::Unused;
+#[doc(hidden)]
+pub use crate::contravariant::Contravariant;
+#[doc(hidden)]
+pub use crate::covariant::Covariant;
+#[doc(hidden)]
+pub use crate::end::End;
+#[doc(hidden)]
+pub use crate::invariant::Invariant;
+use crate::unused::UnusedImpl;
+#[doc(hidden)]
+pub use crate::unused::UnusedImpl::*;
 
-    #[test]
-    fn debug_impl() {
-        assert_eq!(
-            std::format!("{:?}", Unused::<usize>::new()),
-            "Unused(PhantomData)"
-        );
-    }
+/// A container for unused generic types.
+///
+/// The `Unused` type can be created using the [`Unused!`] macro.
+///
+/// `Unused` can also be used as a value for any type `Unused<T>`:
+///
+/// ```
+/// use unused::Unused;
+///
+/// let _: Unused!(usize) = Unused;
+/// ```
+///
+/// See the [crate documentation](crate) for more information.
+pub type Unused<T> = UnusedImpl<T>;
+
+/// A macro that allows for the creation of [`type@Unused`] type containers.
+///
+/// A basic example of usage can be found in the [crate documentation](crate).
+///
+/// ## Usage
+///
+/// ```
+/// use unused::Unused;
+///
+/// struct Foo<A, B, C, D, E> {
+///     unused: Unused!(
+///         A,
+///         B,
+///         C: covariant,
+///         D: contravariant,
+///         E: invariant,
+///     ),
+/// }
+///
+/// ```
+///
+/// ## Variances
+///
+/// You can have different
+/// [type variances](https://doc.rust-lang.org/reference/subtyping.html) when
+/// working with `Unused`.
+///
+/// ### Invariant
+///
+/// Invariance is the default:
+///
+/// ```
+/// # use unused::Unused;
+/// let unused: Unused!(u8) = Unused;
+/// // is the same as:
+/// let unused: Unused!(u8: invariant) = Unused;
+/// ```
+///
+/// ### Covariance and Contravariance
+///
+/// To make `Foo` covariant over `A` and contravariant over `B`:
+///
+/// ```
+/// # use unused::Unused;
+/// struct Foo<A, B> {
+///     unused: Unused!(A: covariant, B: contravariant),
+/// }
+/// ```
+///
+/// ### Lifetimes
+///
+/// Variance is particularily useful when it comes to lifetimes:
+///
+/// ```
+/// # use unused::Unused;
+/// struct Foo<'foo> {
+///     unused: Unused!(&'foo (): covariant),   
+/// }
+///
+/// fn change_foo_lifetime<'a>(foo: Foo<'static>) -> Foo<'a> {
+///     foo
+/// }
+/// ```
+#[macro_export]
+macro_rules! Unused {
+    ($($type:ty $(: $variance:ident)?),+ $(,)?) => {
+        $crate::Unused::<$crate::__impl_Unused!($($type $(:$variance)?,)+)>
+    };
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __impl_Unused {
+    () => {
+        $crate::End
+    };
+    ($type:ty, $($types:ty $(:$variances:ident)?,)*) => {
+        $crate::Invariant::<$type, $crate::__impl_Unused!($($types $(: $variances)?,)*)>
+    };
+    ($type:ty: invariant, $($types:ty $(: $variances:ident)?,)*) => {
+        $crate::Invariant::<$type, $crate::__impl_Unused!($($types $(: $variances)?,)*)>
+    };
+    ($type:ty: covariant, $($types:ty $(: $variances:ident)?,)*) => {
+        $crate::Covariant::<$type, $crate::__impl_Unused!($($types $(: $variances)?,)*)>
+    };
+    ($type:ty: contravariant, $($types:ty $(: $variances:ident)?,)*) => {
+        $crate::Contravariant::<$type, $crate::__impl_Unused!($($types $(: $variances)?,)*)>
+    };
 }

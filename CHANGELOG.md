@@ -4,20 +4,18 @@
 
 ### Added
 
- - The `Unused` type, its `new` function, and implementations of `Clone`,
-   `Copy`, `Debug`, `Default`, `Eq`, `Hash`, `Ord`, `PartialEq`, `PartialOrd`.
- - A test for the `Debug` implementation of `Unused`.
- - Documentation and information about the crate.
- - `producer` and `multiple_unused` examples.
- - MIT and Apache 2.0 licenses.
+-   The `Unused` type alias.
+-   The `Unused` macro, with support for invariance, covariance, and contravariance.
+-   Usage examples and documentation.
+-   Tests to ensure auto traits are implemented and variances are correct.
+-   [MIT](./LICENSE-MIT) and [Apache-2.0](./LICENSE-APACHE) licenses.
 
 ### Changed
 
- - The crate description, to `Allows for unused generic parameters that do not act like they are owned.`
+-   The crate description, to `Allows for unused generic parameters that do not act like they are owned.`
 
 ## [0.0.0] - 2021-06-23
 
 ### Added
 
- - Claimed the `unused` crate name by publishing an empty version.
-
+-   Claimed the `unused` crate name by publishing an empty version.
